@@ -1,230 +1,134 @@
-import xbmc, xbmcaddon, xbmcgui, xbmcplugin,os,sys
-import shutil
+import hashlib
+import json
+import os
+import sys
 import urllib.parse
 import urllib.request
-import re
-import extract
-import time
+
+import xbmc
+import xbmcaddon
+import xbmcgui
+import xbmcplugin
+import xbmcvfs
+
 import downloader
-import plugintools
-import zipfile
-import ntpath
+import extract
+
+ADDON = xbmcaddon.Addon()
+ADDON_ID = ADDON.getAddonInfo('id')
+ADDON_NAME = ADDON.getAddonInfo('name')
+MANIFEST_URL = 'https://thokodi.github.io/repo/builds.json'
+USER_AGENT = 'Kodi/%s %s' % (xbmc.getInfoLabel('System.BuildVersion').split(' ')[0], ADDON_ID)
 
 
-USER_AGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-GB; rv:1.9.0.3) Gecko/2008092417 Firefox/3.0.3'
-base='http://www.youtube.com/samwich1986'
-ADDON=xbmcaddon.Addon(id='plugin.video.thokodi')
-dialog = xbmcgui.Dialog()    
-VERSION = "1.0.0"
-PATH = "rincewind"            
+def log(message, level=xbmc.LOGINFO):
+    xbmc.log('[%s] %s' % (ADDON_ID, message), level)
 
-    
-def CATEGORIES():
-    link = OPEN_URL('http://rincewind.96.lt/wizard.html').replace('\n','').replace('\r','')
-    match = re.compile('name="(.+?)".+?rl="(.+?)".+?mg="(.+?)".+?anart="(.+?)".+?escription="(.+?)"').findall(link)
-    for name,url,iconimage,fanart,description in match:
-        addDir(name,url,1,iconimage,fanart,description)
-    setView('movies', 'MAIN')
-        
-    
-def OPEN_URL(url):
-    req = urllib.request.Request(url)
-    req.add_header('User-Agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-GB; rv:1.9.0.3) Gecko/2008092417 Firefox/3.0.3')
-    response = urllib.request.urlopen(req)
-    link=response.read()
-    response.close()
-    return link.decode('utf-8', errors='replace') if isinstance(link, bytes) else link
-    
-    
-def wizard(name,url,description):
-    path = xbmc.translatePath(os.path.join('special://home/addons','packages'))
-    dp = xbmcgui.DialogProgress()
-    dp.create("[COLOR=orange]Rincewind Wizard[/COLOR]","[COLOR=orange]DOWNLOADING[/COLOR]",'', '[COLOR=orange]Please Wait[/COLOR]')
-    lib=os.path.join(path, name+'.zip')
+
+def show_error(message):
+    log(message, xbmc.LOGERROR)
+    xbmcgui.Dialog().ok(ADDON_NAME, message)
+
+
+def build_url(base_url, **query):
+    return base_url + '?' + urllib.parse.urlencode(query)
+
+
+def parse_params(paramstring):
+    return dict(urllib.parse.parse_qsl(paramstring.lstrip('?')))
+
+
+def load_manifest():
+    req = urllib.request.Request(MANIFEST_URL, headers={'User-Agent': USER_AGENT})
+    with urllib.request.urlopen(req, timeout=15) as response:
+        data = json.loads(response.read().decode('utf-8'))
+    builds = data.get('builds', []) if isinstance(data, dict) else []
+    return [b for b in builds if isinstance(b, dict) and b.get('name') and b.get('url')]
+
+
+def list_menu(handle, base_url):
     try:
-       os.remove(lib)
-    except:
-       pass
-    downloader.download(url, lib, dp)
-    addonfolder = xbmc.translatePath(os.path.join('special://','home'))
-    time.sleep(2)
-    dp.update(0,"[COLOR=orange]EXTRACTING FILES[/COLOR]")
-    print('=======================================')
-    print(addonfolder)
-    print('=======================================')
-    extract.all(lib,addonfolder,dp)
-    killxbmc()
-        
-      
-        
-def killxbmc():
-    choice = xbmcgui.Dialog().yesno('[COLOR=orange]DOWNLOAD COMPLETE[/COLOR]', 'Please force close kodi to continue.', 'Click "Close" to force Kodi to close.', nolabel='Return',yeslabel='Close')
-    if choice == 0:
+        builds = load_manifest()
+    except Exception as exc:
+        log('Failed to load manifest: %s' % exc, xbmc.LOGERROR)
+        xbmcgui.Dialog().ok(ADDON_NAME, 'Unable to load the build list.\n%s' % exc)
+        xbmcplugin.endOfDirectory(handle, succeeded=False)
         return
-    elif choice == 1:
-        pass
-    myplatform = platform()
-    print("Platform: " + str(myplatform))
-    if myplatform == 'osx': # OSX
-        print("############   try osx force close  #################")
-        try: os.system('killall -9 XBMC')
-        except: pass
-        try: os.system('killall -9 Kodi')
-        except: pass
-        dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "If you\'re seeing this message it means the force close", "was unsuccessful. Please force close XBMC/Kodi [COLOR=orange]DO NOT[/COLOR] exit cleanly via the menu.",'')
-    elif myplatform == 'linux': #Linux
-        print("############   try linux force close  #################")
-        try: os.system('killall XBMC')
-        except: pass
-        try: os.system('killall Kodi')
-        except: pass
-        try: os.system('killall -9 xbmc.bin')
-        except: pass
-        try: os.system('killall -9 kodi.bin')
-        except: pass
-        dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "If you\'re seeing this message it means the force close", "was unsuccessful. Please force close XBMC/Kodi [COLOR=orange]DO NOT[/COLOR] exit cleanly via the menu.",'')
-    elif myplatform == 'android': # Android  
-        print("############   try android force close  #################")
-        try: os.system('adb shell am force-stop org.xbmc.kodi')
-        except: pass
-        try: os.system('adb shell am force-stop org.kodi')
-        except: pass
-        try: os.system('adb shell am force-stop org.xbmc.xbmc')
-        except: pass
-        try: os.system('adb shell am force-stop org.xbmc')
-        except: pass        
-        dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "Your system has been detected as Android, you ", "[COLOR=orange][B]MUST[/COLOR][/B] force close XBMC/Kodi. [COLOR=orange]DO NOT[/COLOR] exit cleanly via the menu.","Either close using Task Manager (If unsure pull the plug).")
-    elif myplatform == 'windows': # Windows
-        print("############   try windows force close  #################")
-        try:
-            os.system('@ECHO off')
-            os.system('tskill XBMC.exe')
-        except: pass
-        try:
-            os.system('@ECHO off')
-            os.system('tskill Kodi.exe')
-        except: pass
-        try:
-            os.system('@ECHO off')
-            os.system('TASKKILL /im Kodi.exe /f')
-        except: pass
-        try:
-            os.system('@ECHO off')
-            os.system('TASKKILL /im XBMC.exe /f')
-        except: pass
-        dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "If you\'re seeing this message it means the force close", "was unsuccessful. Please force close XBMC/Kodi [COLOR=orange]DO NOT[/COLOR] exit cleanly via the menu.","Use task manager and NOT ALT F4")
-    else: #ATV
-        print("############   try atv force close  #################")
-        try: os.system('killall AppleTV')
-        except: pass
-        print("############   try raspbmc force close  #################") #OSMC / Raspbmc
-        try: os.system('sudo initctl stop kodi')
-        except: pass
-        try: os.system('sudo initctl stop xbmc')
-        except: pass
-        dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "If you\'re seeing this message it means the force close", "was unsuccessful. Please force close XBMC/Kodi [COLOR=orange]DO NOT[/COLOR] exit via the menu.","Your platform could not be detected so just pull the power cable.")    
 
-def platform():
-    if xbmc.getCondVisibility('system.platform.android'):
-        return 'android'
-    elif xbmc.getCondVisibility('system.platform.linux'):
-        return 'linux'
-    elif xbmc.getCondVisibility('system.platform.windows'):
-        return 'windows'
-    elif xbmc.getCondVisibility('system.platform.osx'):
-        return 'osx'
-    elif xbmc.getCondVisibility('system.platform.atv2'):
-        return 'atv2'
-    elif xbmc.getCondVisibility('system.platform.ios'):
-        return 'ios'
+    for index, build in enumerate(builds):
+        item = xbmcgui.ListItem(label=build['name'])
+        icon = build.get('icon') or ADDON.getAddonInfo('icon')
+        fanart = build.get('fanart') or ADDON.getAddonInfo('fanart')
+        item.setArt({'icon': icon, 'thumb': icon, 'fanart': fanart})
+        tag = item.getVideoInfoTag()
+        tag.setTitle(build['name'])
+        tag.setPlot(build.get('description', ''))
+        xbmcplugin.addDirectoryItem(handle, build_url(base_url, action='install', index=index),
+                                    item, isFolder=False)
+    xbmcplugin.setContent(handle, 'files')
+    xbmcplugin.endOfDirectory(handle)
 
 
-def addDir(name,url,mode,iconimage,fanart,description):
-        u=sys.argv[0]+"?url="+urllib.parse.quote_plus(url)+"&mode="+str(mode)+"&name="+urllib.parse.quote_plus(name)+"&iconimage="+urllib.parse.quote_plus(iconimage)+"&fanart="+urllib.parse.quote_plus(fanart)+"&description="+urllib.parse.quote_plus(description)
-        ok=True
-        liz=xbmcgui.ListItem(name, iconImage="DefaultFolder.png", thumbnailImage=iconimage)
-        liz.setInfo( type="Video", infoLabels={ "Title": name, "Plot": description } )
-        liz.setProperty( "Fanart_Image", fanart )
-        ok=xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]),url=u,listitem=liz,isFolder=False)
-        return ok
-        
-       
-        
-def get_params():
-        param=[]
-        paramstring=sys.argv[2]
-        if len(paramstring)>=2:
-                params=sys.argv[2]
-                cleanedparams=params.replace('?','')
-                if (params[len(params)-1]=='/'):
-                        params=params[0:len(params)-2]
-                pairsofparams=cleanedparams.split('&')
-                param={}
-                for i in range(len(pairsofparams)):
-                        splitparams={}
-                        splitparams=pairsofparams[i].split('=', 1)
-                        if (len(splitparams))==2:
-                                param[splitparams[0]]=splitparams[1]
-                                
-        return param
-        
-                      
-params=get_params()
-url=None
-name=None
-mode=None
-iconimage=None
-fanart=None
-description=None
+def sha256_of(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-try:
-        url=urllib.parse.unquote_plus(params["url"])
-except:
-        pass
-try:
-        name=urllib.parse.unquote_plus(params["name"])
-except:
-        pass
-try:
-        iconimage=urllib.parse.unquote_plus(params["iconimage"])
-except:
-        pass
-try:        
-        mode=int(params["mode"])
-except:
-        pass
-try:        
-        fanart=urllib.parse.unquote_plus(params["fanart"])
-except:
-        pass
-try:        
-        description=urllib.parse.unquote_plus(params["description"])
-except:
-        pass
-        
-        
-print(str(PATH)+': '+str(VERSION))
-print("Mode: "+str(mode))
-print("URL: "+str(url))
-print("Name: "+str(name))
-print("IconImage: "+str(iconimage))
+def install_build(params):
+    try:
+        build = load_manifest()[int(params.get('index', -1))]
+    except Exception as exc:
+        show_error('Unable to find the selected build.\n%s' % exc)
+        return
+
+    name = build['name']
+    if not xbmcgui.Dialog().yesno(ADDON_NAME, 'Install "%s"?\nThis will overwrite files in your Kodi profile.' % name):
+        return
+
+    packages = xbmcvfs.translatePath('special://home/addons/packages')
+    home = xbmcvfs.translatePath('special://home')
+    os.makedirs(packages, exist_ok=True)
+    archive = os.path.join(packages, 'thokodi_build.zip')
+
+    progress = xbmcgui.DialogProgress()
+    progress.create(ADDON_NAME, 'Downloading...')
+    try:
+        downloader.download(build['url'], archive, progress)
+        expected = (build.get('sha256') or '').lower()
+        if expected and sha256_of(archive) != expected:
+            raise ValueError('Checksum mismatch, download discarded.')
+        progress.update(0, 'Extracting files...')
+        if not extract.all(archive, home, progress):
+            raise ValueError('Extraction failed.')
+    except Exception as exc:
+        progress.close()
+        show_error('Install failed: %s' % exc)
+        return
+    finally:
+        progress.close()
+        if os.path.exists(archive):
+            os.remove(archive)
+
+    log('Installed build %s' % name)
+    xbmcgui.Dialog().ok(ADDON_NAME, 'Install complete.\nPlease restart Kodi manually to apply the build.')
 
 
-def setView(content, viewType):
-    # set content type so library shows more views and info
-    if content:
-        xbmcplugin.setContent(int(sys.argv[1]), content)
-    if ADDON.getSetting('auto-view')=='true':
-        xbmc.executebuiltin("Container.SetViewMode(%s)" % ADDON.getSetting(viewType) )
-        
-        
-if mode==None or url==None or len(url)<1:
-        CATEGORIES()
-       
-elif mode==1:
-        wizard(name,url,description)
-        
+def router(argv):
+    base_url = argv[0]
+    handle = int(argv[1])
+    params = parse_params(argv[2] if len(argv) > 2 else '')
+    action = params.get('action')
+    log('action=%s' % action, xbmc.LOGDEBUG)
 
-        
-xbmcplugin.endOfDirectory(int(sys.argv[1]))
+    if action == 'install':
+        install_build(params)
+        xbmcplugin.endOfDirectory(handle, succeeded=False)
+    else:
+        list_menu(handle, base_url)
+
+
+if __name__ == '__main__':
+    router(sys.argv)
