@@ -1,12 +1,12 @@
 import xbmcgui
-import urllib
+import urllib.request
 
 def download(url, dest, dp = None):
     if not dp:
         dp = xbmcgui.DialogProgress()
         dp.create("SimpleKodi...Maintenance","Downloading & Copying File",' ', ' ')
     dp.update(0)
-    urllib.urlretrieve(url,dest,lambda nb, bs, fs, url=url: _pbhook(nb,bs,fs,url,dp))
+    urllib.request.urlretrieve(url,dest,lambda nb, bs, fs, url=url: _pbhook(nb,bs,fs,url,dp))
  
 def _pbhook(numblocks, blocksize, filesize, url, dp):
     try:
