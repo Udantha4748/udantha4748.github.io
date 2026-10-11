@@ -20,8 +20,8 @@ import xbmc
 import xbmcplugin
 import xbmcaddon
 import xbmcgui
-import urllib
-import urllib2
+import urllib.parse
+import urllib.request
 import re
 import sys
 
@@ -55,7 +55,7 @@ def get_params():
                 if "=" in command:
                     split_command = command.split('=')
                     key = split_command[0]
-                    value = urllib.unquote_plus(split_command[1])
+                    value = urllib.parse.unquote_plus(split_command[1])
                     commands[key] = value
                 else:
                     commands[command] = ""
@@ -67,11 +67,10 @@ def get_params():
 def read(url):
     _log("read "+url)
 
-    f = urllib2.urlopen(url)
+    f = urllib.request.urlopen(url)
     data = f.read()
     f.close()
-    
-    return data
+    return data.decode('utf-8', errors='replace') if isinstance(data, bytes) else data
 
 # Parse string and extracts multiple matches using regular expressions
 def find_multiple_matches(text,pattern):
@@ -105,7 +104,7 @@ def add_item( action="" , title="" , plot="" , url="" ,thumbnail="" , folder=Tru
         listitem.setProperty('IsPlayable', 'true')
         xbmcplugin.addDirectoryItem( handle=int(sys.argv[1]), url=itemurl, listitem=listitem)
     else:
-        itemurl = '%s?action=%s&title=%s&url=%s&thumbnail=%s&plot=%s' % ( sys.argv[ 0 ] , action , urllib.quote_plus( title ) , urllib.quote_plus(url) , urllib.quote_plus( thumbnail ) , urllib.quote_plus( plot ))
+        itemurl = '%s?action=%s&title=%s&url=%s&thumbnail=%s&plot=%s' % ( sys.argv[ 0 ] , action , urllib.parse.quote_plus( title ) , urllib.parse.quote_plus(url) , urllib.parse.quote_plus( thumbnail ) , urllib.parse.quote_plus( plot ))
         xbmcplugin.addDirectoryItem( handle=int(sys.argv[1]), url=itemurl, listitem=listitem, isFolder=folder)
 
 def close_item_list():

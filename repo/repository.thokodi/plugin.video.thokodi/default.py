@@ -1,6 +1,7 @@
 import xbmc, xbmcaddon, xbmcgui, xbmcplugin,os,sys
 import shutil
-import urllib2,urllib
+import urllib.parse
+import urllib.request
 import re
 import extract
 import time
@@ -12,7 +13,7 @@ import ntpath
 
 USER_AGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-GB; rv:1.9.0.3) Gecko/2008092417 Firefox/3.0.3'
 base='http://www.youtube.com/samwich1986'
-ADDON=xbmcaddon.Addon(id='plugin.video.rincewind')
+ADDON=xbmcaddon.Addon(id='plugin.video.thokodi')
 dialog = xbmcgui.Dialog()    
 VERSION = "1.0.0"
 PATH = "rincewind"            
@@ -27,12 +28,12 @@ def CATEGORIES():
         
     
 def OPEN_URL(url):
-    req = urllib2.Request(url)
+    req = urllib.request.Request(url)
     req.add_header('User-Agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-GB; rv:1.9.0.3) Gecko/2008092417 Firefox/3.0.3')
-    response = urllib2.urlopen(req)
+    response = urllib.request.urlopen(req)
     link=response.read()
     response.close()
-    return link
+    return link.decode('utf-8', errors='replace') if isinstance(link, bytes) else link
     
     
 def wizard(name,url,description):
@@ -48,9 +49,9 @@ def wizard(name,url,description):
     addonfolder = xbmc.translatePath(os.path.join('special://','home'))
     time.sleep(2)
     dp.update(0,"[COLOR=orange]EXTRACTING FILES[/COLOR]")
-    print '======================================='
-    print addonfolder
-    print '======================================='
+    print('=======================================')
+    print(addonfolder)
+    print('=======================================')
     extract.all(lib,addonfolder,dp)
     killxbmc()
         
@@ -63,16 +64,16 @@ def killxbmc():
     elif choice == 1:
         pass
     myplatform = platform()
-    print "Platform: " + str(myplatform)
+    print("Platform: " + str(myplatform))
     if myplatform == 'osx': # OSX
-        print "############   try osx force close  #################"
+        print("############   try osx force close  #################")
         try: os.system('killall -9 XBMC')
         except: pass
         try: os.system('killall -9 Kodi')
         except: pass
         dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "If you\'re seeing this message it means the force close", "was unsuccessful. Please force close XBMC/Kodi [COLOR=orange]DO NOT[/COLOR] exit cleanly via the menu.",'')
     elif myplatform == 'linux': #Linux
-        print "############   try linux force close  #################"
+        print("############   try linux force close  #################")
         try: os.system('killall XBMC')
         except: pass
         try: os.system('killall Kodi')
@@ -83,7 +84,7 @@ def killxbmc():
         except: pass
         dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "If you\'re seeing this message it means the force close", "was unsuccessful. Please force close XBMC/Kodi [COLOR=orange]DO NOT[/COLOR] exit cleanly via the menu.",'')
     elif myplatform == 'android': # Android  
-        print "############   try android force close  #################"
+        print("############   try android force close  #################")
         try: os.system('adb shell am force-stop org.xbmc.kodi')
         except: pass
         try: os.system('adb shell am force-stop org.kodi')
@@ -94,7 +95,7 @@ def killxbmc():
         except: pass        
         dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "Your system has been detected as Android, you ", "[COLOR=orange][B]MUST[/COLOR][/B] force close XBMC/Kodi. [COLOR=orange]DO NOT[/COLOR] exit cleanly via the menu.","Either close using Task Manager (If unsure pull the plug).")
     elif myplatform == 'windows': # Windows
-        print "############   try windows force close  #################"
+        print("############   try windows force close  #################")
         try:
             os.system('@ECHO off')
             os.system('tskill XBMC.exe')
@@ -113,10 +114,10 @@ def killxbmc():
         except: pass
         dialog.ok("[COLOR=orange][B]WARNING  !!![/COLOR][/B]", "If you\'re seeing this message it means the force close", "was unsuccessful. Please force close XBMC/Kodi [COLOR=orange]DO NOT[/COLOR] exit cleanly via the menu.","Use task manager and NOT ALT F4")
     else: #ATV
-        print "############   try atv force close  #################"
+        print("############   try atv force close  #################")
         try: os.system('killall AppleTV')
         except: pass
-        print "############   try raspbmc force close  #################" #OSMC / Raspbmc
+        print("############   try raspbmc force close  #################") #OSMC / Raspbmc
         try: os.system('sudo initctl stop kodi')
         except: pass
         try: os.system('sudo initctl stop xbmc')
@@ -139,7 +140,7 @@ def platform():
 
 
 def addDir(name,url,mode,iconimage,fanart,description):
-        u=sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+str(mode)+"&name="+urllib.quote_plus(name)+"&iconimage="+urllib.quote_plus(iconimage)+"&fanart="+urllib.quote_plus(fanart)+"&description="+urllib.quote_plus(description)
+        u=sys.argv[0]+"?url="+urllib.parse.quote_plus(url)+"&mode="+str(mode)+"&name="+urllib.parse.quote_plus(name)+"&iconimage="+urllib.parse.quote_plus(iconimage)+"&fanart="+urllib.parse.quote_plus(fanart)+"&description="+urllib.parse.quote_plus(description)
         ok=True
         liz=xbmcgui.ListItem(name, iconImage="DefaultFolder.png", thumbnailImage=iconimage)
         liz.setInfo( type="Video", infoLabels={ "Title": name, "Plot": description } )
@@ -161,7 +162,7 @@ def get_params():
                 param={}
                 for i in range(len(pairsofparams)):
                         splitparams={}
-                        splitparams=pairsofparams[i].split('=')
+                        splitparams=pairsofparams[i].split('=', 1)
                         if (len(splitparams))==2:
                                 param[splitparams[0]]=splitparams[1]
                                 
@@ -178,15 +179,15 @@ description=None
 
 
 try:
-        url=urllib.unquote_plus(params["url"])
+        url=urllib.parse.unquote_plus(params["url"])
 except:
         pass
 try:
-        name=urllib.unquote_plus(params["name"])
+        name=urllib.parse.unquote_plus(params["name"])
 except:
         pass
 try:
-        iconimage=urllib.unquote_plus(params["iconimage"])
+        iconimage=urllib.parse.unquote_plus(params["iconimage"])
 except:
         pass
 try:        
@@ -194,20 +195,20 @@ try:
 except:
         pass
 try:        
-        fanart=urllib.unquote_plus(params["fanart"])
+        fanart=urllib.parse.unquote_plus(params["fanart"])
 except:
         pass
 try:        
-        description=urllib.unquote_plus(params["description"])
+        description=urllib.parse.unquote_plus(params["description"])
 except:
         pass
         
         
-print str(PATH)+': '+str(VERSION)
-print "Mode: "+str(mode)
-print "URL: "+str(url)
-print "Name: "+str(name)
-print "IconImage: "+str(iconimage)
+print(str(PATH)+': '+str(VERSION))
+print("Mode: "+str(mode))
+print("URL: "+str(url))
+print("Name: "+str(name))
+print("IconImage: "+str(iconimage))
 
 
 def setView(content, viewType):
@@ -227,4 +228,3 @@ elif mode==1:
 
         
 xbmcplugin.endOfDirectory(int(sys.argv[1]))
-

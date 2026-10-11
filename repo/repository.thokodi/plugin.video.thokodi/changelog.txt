@@ -1,2 +1,5 @@
+v1.0.1
+Python 3 compatibility for current Kodi releases.
+
 v1.0
 First Release
