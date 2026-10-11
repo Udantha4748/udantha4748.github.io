@@ -1,9 +1,12 @@
-import hashlib
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
 import json
-import os
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import xbmc
 import xbmcaddon
@@ -11,124 +14,243 @@ import xbmcgui
 import xbmcplugin
 import xbmcvfs
 
-import downloader
-import extract
-
 ADDON = xbmcaddon.Addon()
-ADDON_ID = ADDON.getAddonInfo('id')
-ADDON_NAME = ADDON.getAddonInfo('name')
-MANIFEST_URL = 'https://thokodi.github.io/repo/builds.json'
-USER_AGENT = 'Kodi/%s %s' % (xbmc.getInfoLabel('System.BuildVersion').split(' ')[0], ADDON_ID)
+ADDON_ID = ADDON.getAddonInfo("id")
+ADDON_NAME = ADDON.getAddonInfo("name")
+ADDON_VERSION = ADDON.getAddonInfo("version")
+HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+
+# TODO: replace this with your real manifest endpoint
+MANIFEST_URL = "https://thokodi.github.io/builds/manifest.json"
 
 
-def log(message, level=xbmc.LOGINFO):
-    xbmc.log('[%s] %s' % (ADDON_ID, message), level)
+def log(message: str, level=xbmc.LOGINFO) -> None:
+    xbmc.log(f"[{ADDON_ID}] {message}", level)
 
 
-def show_error(message):
-    log(message, xbmc.LOGERROR)
-    xbmcgui.Dialog().ok(ADDON_NAME, message)
+def notify(title: str, message: str, level=xbmcgui.NOTIFICATION_INFO) -> None:
+    xbmcgui.Dialog().notification(title, message, level, 5000)
 
 
-def build_url(base_url, **query):
-    return base_url + '?' + urllib.parse.urlencode(query)
+def build_url(**query) -> str:
+    return sys.argv[0] + "?" + urllib.parse.urlencode(query)
 
 
-def parse_params(paramstring):
-    return dict(urllib.parse.parse_qsl(paramstring.lstrip('?')))
+def parse_params() -> dict:
+    if len(sys.argv) < 3 or not sys.argv[2]:
+        return {}
+    query = sys.argv[2][1:] if sys.argv[2].startswith("?") else sys.argv[2]
+    return dict(urllib.parse.parse_qsl(query))
 
 
-def load_manifest():
-    req = urllib.request.Request(MANIFEST_URL, headers={'User-Agent': USER_AGENT})
-    with urllib.request.urlopen(req, timeout=15) as response:
-        data = json.loads(response.read().decode('utf-8'))
-    builds = data.get('builds', []) if isinstance(data, dict) else []
-    return [b for b in builds if isinstance(b, dict) and b.get('name') and b.get('url')]
+def open_url(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "Kodi"})
+    with urllib.request.urlopen(req, timeout=20) as response:
+        data = response.read()
+    return data.decode("utf-8", errors="replace") if isinstance(data, bytes) else data
 
 
-def list_menu(handle, base_url):
+def add_item(label: str, action: str, folder: bool = True, art: dict | None = None, info: dict | None = None, **params) -> None:
+    li = xbmcgui.ListItem(label=label)
+
+    if art:
+        li.setArt(art)
+
+    if info:
+        vtag = li.getVideoInfoTag()
+        if info.get("title"):
+            vtag.setTitle(info["title"])
+        if info.get("plot"):
+            vtag.setPlot(info["plot"])
+
+    xbmcplugin.addDirectoryItem(HANDLE, build_url(action=action, **params), li, isFolder=folder)
+
+
+def render_main_menu() -> None:
+    add_item(
+        label="Available builds",
+        action="list_builds",
+        folder=True,
+        art={
+            "icon": ADDON.getAddonInfo("icon"),
+            "thumb": ADDON.getAddonInfo("icon"),
+            "fanart": ADDON.getAddonInfo("fanart"),
+        },
+    )
+    xbmcplugin.setContent(HANDLE, "files")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def load_manifest() -> dict:
+    raw = open_url(MANIFEST_URL)
+    return json.loads(raw)
+
+
+def render_build_list() -> None:
     try:
-        builds = load_manifest()
+        manifest = load_manifest()
     except Exception as exc:
-        log('Failed to load manifest: %s' % exc, xbmc.LOGERROR)
-        xbmcgui.Dialog().ok(ADDON_NAME, 'Unable to load the build list.\n%s' % exc)
-        xbmcplugin.endOfDirectory(handle, succeeded=False)
+        log(f"Failed to load manifest: {exc}", xbmc.LOGERROR)
+        xbmcgui.Dialog().ok(ADDON_NAME, "Failed to load build manifest.", str(exc))
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         return
 
-    for index, build in enumerate(builds):
-        item = xbmcgui.ListItem(label=build['name'])
-        icon = build.get('icon') or ADDON.getAddonInfo('icon')
-        fanart = build.get('fanart') or ADDON.getAddonInfo('fanart')
-        item.setArt({'icon': icon, 'thumb': icon, 'fanart': fanart})
-        tag = item.getVideoInfoTag()
-        tag.setTitle(build['name'])
-        tag.setPlot(build.get('description', ''))
-        xbmcplugin.addDirectoryItem(handle, build_url(base_url, action='install', index=index),
-                                    item, isFolder=False)
-    xbmcplugin.setContent(handle, 'files')
-    xbmcplugin.endOfDirectory(handle)
-
-
-def sha256_of(path):
-    digest = hashlib.sha256()
-    with open(path, 'rb') as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def install_build(params):
-    try:
-        build = load_manifest()[int(params.get('index', -1))]
-    except Exception as exc:
-        show_error('Unable to find the selected build.\n%s' % exc)
+    builds = manifest.get("builds", [])
+    if not builds:
+        xbmcgui.Dialog().ok(ADDON_NAME, "No builds found in the manifest.")
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         return
 
-    name = build['name']
-    if not xbmcgui.Dialog().yesno(ADDON_NAME, 'Install "%s"?\nThis will overwrite files in your Kodi profile.' % name):
-        return
+    for build in builds:
+        label = build.get("name", "Unnamed build")
+        add_item(
+            label=label,
+            action="install_build",
+            folder=False,
+            art={
+                "icon": build.get("icon", ADDON.getAddonInfo("icon")),
+                "thumb": build.get("icon", ADDON.getAddonInfo("icon")),
+                "fanart": build.get("fanart", ADDON.getAddonInfo("fanart")),
+            },
+            info={
+                "title": label,
+                "plot": build.get("description", ""),
+            },
+            name=label,
+            url=build.get("url", ""),
+            checksum=build.get("checksum", ""),
+        )
 
-    packages = xbmcvfs.translatePath('special://home/addons/packages')
-    home = xbmcvfs.translatePath('special://home')
-    os.makedirs(packages, exist_ok=True)
-    archive = os.path.join(packages, 'thokodi_build.zip')
-
-    progress = xbmcgui.DialogProgress()
-    progress.create(ADDON_NAME, 'Downloading...')
-    try:
-        downloader.download(build['url'], archive, progress)
-        expected = (build.get('sha256') or '').lower()
-        if expected and sha256_of(archive) != expected:
-            raise ValueError('Checksum mismatch, download discarded.')
-        progress.update(0, 'Extracting files...')
-        if not extract.all(archive, home, progress):
-            raise ValueError('Extraction failed.')
-    except Exception as exc:
-        progress.close()
-        show_error('Install failed: %s' % exc)
-        return
-    finally:
-        progress.close()
-        if os.path.exists(archive):
-            os.remove(archive)
-
-    log('Installed build %s' % name)
-    xbmcgui.Dialog().ok(ADDON_NAME, 'Install complete.\nPlease restart Kodi manually to apply the build.')
+    xbmcplugin.setContent(HANDLE, "files")
+    xbmcplugin.endOfDirectory(HANDLE)
 
 
-def router(argv):
-    base_url = argv[0]
-    handle = int(argv[1])
-    params = parse_params(argv[2] if len(argv) > 2 else '')
-    action = params.get('action')
-    log('action=%s' % action, xbmc.LOGDEBUG)
+def verify_checksum(local_path: Path, expected: str) -> bool:
+    """
+    Expected checksum format examples:
+      - sha256:abcdef...
+      - md5:abcdef...
+    """
+    if not expected:
+        return True
 
-    if action == 'install':
-        install_build(params)
-        xbmcplugin.endOfDirectory(handle, succeeded=False)
+    if ":" in expected:
+        algo, expected_hash = expected.split(":", 1)
     else:
-        list_menu(handle, base_url)
+        algo, expected_hash = "sha256", expected
+
+    algo = algo.lower().strip()
+    expected_hash = expected_hash.strip().lower()
+
+    if algo not in {"md5", "sha1", "sha256"}:
+        raise ValueError(f"Unsupported checksum algorithm: {algo}")
+
+    import hashlib
+
+    h = hashlib.new(algo)
+    with local_path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+
+    return h.hexdigest().lower() == expected_hash
 
 
-if __name__ == '__main__':
-    router(sys.argv)
+def safe_extract_zip(zip_path: Path, destination: Path) -> None:
+    import zipfile
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        for member in zf.infolist():
+            member_path = (destination / member.filename).resolve()
+            if not str(member_path).startswith(str(destination.resolve())):
+                raise ValueError(f"Blocked unsafe zip entry: {member.filename}")
+        zf.extractall(destination)
+
+
+def install_build(url: str, checksum: str, name: str) -> None:
+    if not url:
+        xbmcgui.Dialog().ok(ADDON_NAME, "Missing build URL.")
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+        return
+
+    dialog = xbmcgui.DialogProgress()
+    dialog.create(ADDON_NAME, f"Downloading {name}...")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="thokodi_"))
+    zip_path = temp_dir / "build.zip"
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Kodi"})
+        with urllib.request.urlopen(req, timeout=60) as response, zip_path.open("wb") as out:
+            total = response.headers.get("Content-Length")
+            total = int(total) if total and total.isdigit() else 0
+            downloaded = 0
+
+            while True:
+                chunk = response.read(1024 * 64)
+                if not chunk:
+                    break
+                out.write(chunk)
+                downloaded += len(chunk)
+
+                percent = int((downloaded / total) * 100) if total else 0
+                dialog.update(percent, f"Downloading {name}...", f"{downloaded} bytes")
+
+                if dialog.iscanceled():
+                    raise Exception("Download canceled")
+
+        if checksum and not verify_checksum(zip_path, checksum):
+            raise ValueError("Checksum verification failed")
+
+        dialog.update(0, f"Installing {name}...")
+
+        # Install into a controlled location, not blindly over special://home.
+        # If you need a different target, adjust this path intentionally.
+        install_target = Path(xbmcvfs.translatePath("special://home/addons"))
+        safe_extract_zip(zip_path, install_target)
+
+        dialog.close()
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            f"{name} downloaded and installed.",
+            "Please restart Kodi if the new files do not appear immediately.",
+        )
+        xbmc.executebuiltin("Container.Refresh")
+    except Exception as exc:
+        dialog.close()
+        log(f"Install failed: {exc}", xbmc.LOGERROR)
+        xbmcgui.Dialog().ok(ADDON_NAME, "Installation failed.", str(exc))
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+    finally:
+        try:
+            zip_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        try:
+            temp_dir.rmdir()
+        except Exception:
+            pass
+
+
+def router() -> None:
+    params = parse_params()
+    action = params.get("action")
+
+    log(f"version={ADDON_VERSION}, action={action}, params={params}")
+
+    if not action:
+        render_main_menu()
+    elif action == "list_builds":
+        render_build_list()
+    elif action == "install_build":
+        install_build(
+            url=params.get("url", ""),
+            checksum=params.get("checksum", ""),
+            name=params.get("name", "build"),
+        )
+    else:
+        xbmcgui.Dialog().ok(ADDON_NAME, f"Unknown action: {action}")
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+
+
+if __name__ == "__main__":
+    router()
