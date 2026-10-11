@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.thokodi" name="thokodi" version="1.0.0" provider-name="thokodi">
+  <requires>
+    <import addon="xbmc.python" version="3"/>
+  </requires>
+  <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>video executable</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">thokodi</summary>
+    <description lang="en">thokodi</description>
+	<website></website>
+    <platform>all</platform>
+  </extension>
+</addon>
