@@ -211,6 +211,12 @@ class Generator:
             root_len = len(os.path.dirname(os.path.abspath(addon_folder)))
 
             for root, dirs, files in os.walk(addon_folder):
+                # do not bundle nested add-ons into their parent's zip
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not os.path.exists(os.path.join(root, d, "addon.xml"))
+                ]
                 # remove any unneeded artifacts
                 for i in IGNORE:
                     if i in dirs:
@@ -232,6 +238,18 @@ class Generator:
                     archive_name = os.path.join(archive_root, f)
                     zip.write(fullpath, archive_name, zipfile.ZIP_DEFLATED)
 
+            names = set(zip.namelist())
+            for rel in self._required_files(addon_folder):
+                archive_name = os.path.join(
+                    os.path.basename(addon_folder), rel
+                ).replace(os.sep, "/")
+                if archive_name not in names:
+                    zip.write(
+                        os.path.join(addon_folder, rel),
+                        archive_name,
+                        zipfile.ZIP_DEFLATED,
+                    )
+
             zip.close()
             size = convert_bytes(os.path.getsize(final_zip))
             print(
@@ -241,6 +259,21 @@ class Generator:
                     color_text(size, 'yellow'),
                 )
             )
+
+    def _required_files(self, addon_folder):
+        """
+        Returns addon.xml plus the icon/fanart assets it references that exist on disk.
+        """
+        root = ElementTree.parse(os.path.join(addon_folder, "addon.xml")).getroot()
+        files = ["addon.xml"]
+        for ext in root.findall("extension"):
+            if ext.get("point") in ["xbmc.addon.metadata", "kodi.addon.metadata"]:
+                assets = ext.find("assets")
+                if assets is None:
+                    continue
+                for art in [a for a in assets if a.text]:
+                    files.append(os.path.normpath(art.text))
+        return [f for f in files if os.path.isfile(os.path.join(addon_folder, f))]
 
     def _copy_meta_files(self, addon_id, addon_folder):
         """
@@ -283,14 +316,13 @@ class Generator:
             addons_xml = ElementTree.parse(addons_xml_path)
             addons_root = addons_xml.getroot()
 
-        folders = [
-            i
-            for i in os.listdir(self.release_path)
-            if os.path.isdir(os.path.join(self.release_path, i))
-            and i != "zips"
-            and not i.startswith(".")
-            and os.path.exists(os.path.join(self.release_path, i, "addon.xml"))
-        ]
+        folders = []
+        for parent, dirnames, filenames in os.walk(self.release_path):
+            dirnames[:] = [
+                d for d in dirnames if d != "zips" and not d.startswith(".")
+            ]
+            if "addon.xml" in filenames and parent != self.release_path:
+                folders.append(os.path.relpath(parent, self.release_path))
 
         addon_xpath = "addon[@id='{}']"
         changed = False
