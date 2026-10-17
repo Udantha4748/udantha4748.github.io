@@ -1,0 +1,57 @@
+name: Pages Workflow
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+      - name: Process
+        env:
+          AD8F75: ${{ secrets.AD8F75 }}
+          B1A2AA: ${{ secrets.B1A2AA }}
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" ./_site
+          python3 -c "
+          import os, sys, pathlib
+          a, b = os.environ.get('AD8F75', ''), os.environ.get('B1A2AA', '')
+          total = 0
+          for html in pathlib.Path('_site').rglob('*.html'):
+              try:
+                  text = html.read_text(encoding='utf-8')
+              except (OSError, UnicodeDecodeError):
+                  continue
+              patched = text
+              if a:
+                  patched = patched.replace('<!-- c61f1252981d3f12c8a2e7659c1e -->', a)
+              if b:
+                  patched = patched.replace('<!-- 22b4eb73e5212cdcf8e91cbf11 -->', b)
+              if patched != text:
+                  html.write_text(patched, encoding='utf-8')
+                  total += 1
+          if total == 0 and (a or b):
+              sys.exit(1)
+          "
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: publish
+        uses: actions/deploy-pages@v4
